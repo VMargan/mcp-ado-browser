@@ -1,0 +1,23 @@
+{
+  "id": 102,
+  "rev": 1,
+  "url": "https://dev.azure.com/contoso/_apis/wit/workItems/102",
+  "fields": {
+    "System.Id": 102,
+    "System.Title": "Mobile layout regression",
+    "System.State": "Closed",
+    "System.WorkItemType": "Task",
+    "System.TeamProject": "demo",
+    "System.Rev": 1,
+    "System.ChangedDate": "2026-06-19T08:00:00Z"
+  },
+  "relations": [
+    {
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://dev.azure.com/contoso/_apis/wit/workItems/101",
+      "attributes": {
+        "name": "Parent"
+      }
+    }
+  ]
+}

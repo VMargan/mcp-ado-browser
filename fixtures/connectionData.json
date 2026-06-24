@@ -1,0 +1,7 @@
+{
+  "authenticatedUser": {
+    "id": "user-guid-1",
+    "providerDisplayName": "Jane Doe",
+    "subjectDescriptor": "aad.abc"
+  }
+}

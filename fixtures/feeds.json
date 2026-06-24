@@ -1,0 +1,10 @@
+{
+  "count": 1,
+  "value": [
+    {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "name": "demo-feed",
+      "url": "https://feeds.dev.azure.com/contoso/_apis/packaging/feeds/33333333-3333-3333-3333-333333333333"
+    }
+  ]
+}

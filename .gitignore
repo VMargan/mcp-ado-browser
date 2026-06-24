@@ -1,0 +1,7 @@
+node_modules/
+dist/
+# isolated browser profile + caches are machine-local, never committed
+.mcp-ado-browser/
+*.sqlite
+live-artifacts/
+live-acceptance-report.json

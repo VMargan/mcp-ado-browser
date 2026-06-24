@@ -1,0 +1,45 @@
+{
+  "value": [
+    {
+      "id": 900,
+      "status": "active",
+      "comments": [
+        {
+          "id": 1,
+          "content": "Jane Doe voted Approved",
+          "author": {
+            "displayName": "person-961cde1f"
+          },
+          "commentType": "system",
+          "publishedDate": "2026-06-21T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": 901,
+      "status": "active",
+      "comments": [
+        {
+          "id": 1,
+          "content": "Please add a unit test.",
+          "author": {
+            "displayName": "person-ef61a579",
+            "uniqueName": "person-ddcf13fa"
+          },
+          "commentType": "text",
+          "publishedDate": "2026-06-21T10:00:00Z"
+        },
+        {
+          "id": 2,
+          "content": "Done.",
+          "author": {
+            "displayName": "person-01332c87",
+            "uniqueName": "person-6f0733d2"
+          },
+          "commentType": "text",
+          "publishedDate": "2026-06-21T11:00:00Z"
+        }
+      ]
+    }
+  ]
+}

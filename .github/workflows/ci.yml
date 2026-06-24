@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  verify:
+    name: build + offline verify
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # channel:'chrome' drives a real Chrome; install it (no Playwright download).
+      - name: Install Google Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      - name: Secret scan (generic patterns)
+        run: npm run scan:secrets
+
+      - name: Build
+        run: npm run build
+
+      - name: Offline verification gates
+        run: npm run verify
+        env:
+          # CI runner has no desktop sandbox capabilities for headful; headless is default.
+          ADO_NO_SANDBOX: "1"

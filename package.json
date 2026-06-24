@@ -1,0 +1,62 @@
+{
+  "name": "mcp-ado-browser",
+  "version": "0.1.0",
+  "description": "Read-only Azure DevOps for MCP clients using only your existing browser session — no PAT, no Azure CLI. Browse work items, pull requests, comments, attachments and Artifacts feeds across every project, repo and feed you can access.",
+  "type": "module",
+  "bin": {
+    "mcp-ado-browser": "dist/src/index.js"
+  },
+  "main": "dist/src/index.js",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "license": "MIT",
+  "author": "VMargan (https://github.com/VMargan)",
+  "homepage": "https://github.com/VMargan/mcp-ado-browser#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VMargan/mcp-ado-browser.git"
+  },
+  "bugs": {
+    "url": "https://github.com/VMargan/mcp-ado-browser/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "azure-devops",
+    "ado",
+    "playwright",
+    "browser-session",
+    "no-pat",
+    "work-items",
+    "pull-requests",
+    "artifacts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/index.js",
+    "verify": "tsc -p tsconfig.json && node dist/test/harness/verify.js",
+    "verify:live": "tsc -p tsconfig.json && ADO_LIVE=1 node dist/test/harness/verify.js",
+    "authenticate": "tsc -p tsconfig.json && node dist/src/index.js authenticate",
+    "demo:live": "tsc -p tsconfig.json && node scripts/demo-live.mjs",
+    "scan:secrets": "node scripts/scan-secrets.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "playwright-core": "^1.49.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

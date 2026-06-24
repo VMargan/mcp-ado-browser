@@ -1,0 +1,27 @@
+{
+  "value": [
+    {
+      "pullRequestId": 42,
+      "title": "Fix login button alignment",
+      "description": "Resolves the mobile misalignment.",
+      "status": "active",
+      "createdBy": {
+        "displayName": "person-01332c87",
+        "uniqueName": "person-6f0733d2"
+      },
+      "sourceRefName": "refs/heads/fix/login-align",
+      "targetRefName": "refs/heads/main",
+      "repository": {
+        "id": "22222222-2222-2222-2222-222222222222",
+        "name": "web-app"
+      },
+      "reviewers": [
+        {
+          "id": "rev-1",
+          "displayName": "person-ef61a579",
+          "vote": 10
+        }
+      ]
+    }
+  ]
+}

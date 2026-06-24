@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/VMargan/mcp-ado-browser/compare/v1.0.0...v1.1.0) (2026-06-24)
+
+
+### Features
+
+* add authenticate MCP tool and universal multi-client setup ([15237bc](https://github.com/VMargan/mcp-ado-browser/commit/15237bc49577112120cc1264dbf95575be707d06))
+
 # Changelog
 
 All notable changes are documented here. From v1.1.0 onward this file is maintained

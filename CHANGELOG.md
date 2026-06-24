@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/VMargan/mcp-ado-browser/compare/v1.1.1...v1.2.0) (2026-06-24)
+
+
+### Features
+
+* add status and logout commands ([2860d52](https://github.com/VMargan/mcp-ado-browser/commit/2860d525b0299495876d7ab9f1948f3297a11821))
+
 ## [1.1.1](https://github.com/VMargan/mcp-ado-browser/compare/v1.1.0...v1.1.1) (2026-06-24)
 
 

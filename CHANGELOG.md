@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/VMargan/mcp-ado-browser/compare/v1.2.0...v1.2.1) (2026-06-24)
+
+
+### Bug Fixes
+
+* route all data fetches through the browser cookie jar (context.request) ([3119233](https://github.com/VMargan/mcp-ado-browser/commit/31192337123537f3825169d6d556202c9bce9ebd))
+
 # [1.2.0](https://github.com/VMargan/mcp-ado-browser/compare/v1.1.1...v1.2.0) (2026-06-24)
 
 

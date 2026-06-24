@@ -1,6 +1,6 @@
 {
   "name": "mcp-ado-browser",
-  "version": "0.0.0-development",
+  "version": "1.0.0",
   "description": "Read-only Azure DevOps for MCP clients using only your existing browser session — no PAT, no Azure CLI. Browse work items, pull requests, comments, attachments and Artifacts feeds across every project, repo and feed you can access.",
   "type": "module",
   "bin": {

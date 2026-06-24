@@ -67,6 +67,12 @@ request carries `X-TFS-FedAuthRedirect: Suppress` so a dead session returns a cl
 **Prerequisites:** Node ≥ 22.5 and Google Chrome (or Microsoft Edge) installed. You do
 **not** need a PAT, the Azure CLI, or any admin setup.
 
+**Two ways to run it:**
+
+- From npm (once published): `npx mcp-ado-browser …`
+- Straight from GitHub, no npm account needed (builds on install):
+  `npx github:VMargan/mcp-ado-browser …`
+
 ```bash
 # 1) Sign in once (opens a VISIBLE, chromeless window; complete MFA).
 #    Persists the session on an isolated profile, then re-validates headless.

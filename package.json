@@ -1,6 +1,6 @@
 {
   "name": "mcp-ado-browser",
-  "version": "0.1.0",
+  "version": "0.0.0-development",
   "description": "Read-only Azure DevOps for MCP clients using only your existing browser session — no PAT, no Azure CLI. Browse work items, pull requests, comments, attachments and Artifacts feeds across every project, repo and feed you can access.",
   "type": "module",
   "bin": {
@@ -57,7 +57,14 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^12.0.8",
+    "@semantic-release/npm": "^13.1.5",
+    "@semantic-release/release-notes-generator": "^14.1.1",
     "@types/node": "^22.10.0",
+    "semantic-release": "^25.0.5",
     "typescript": "^5.7.0"
   }
 }

@@ -64,50 +64,101 @@ flowchart TD
 **Prerequisites:** Node ≥ 22.5 and Google Chrome (or Microsoft Edge) installed. You do
 **not** need a PAT, the Azure CLI, or any admin setup.
 
-**Two ways to run it:**
+Setup is **two steps**:
 
-- From npm (once published): `npx mcp-ado-browser …`
-- Straight from GitHub, no npm account needed (builds on install):
-  `npx github:VMargan/mcp-ado-browser …`
+1. **Register the server** in your MCP client (one config entry — see your client below).
+2. **Sign in once** — just ask your assistant: *“authenticate to Azure DevOps”*. The
+   built-in `authenticate` tool opens a visible browser window; you log in (MFA), and the
+   session is persisted. (No separate terminal command needed.) From then on everything
+   runs headless until the session expires — then just ask it to authenticate again.
 
-```bash
-# 1) Sign in once (opens a VISIBLE, chromeless window; complete MFA).
-#    Persists the session on an isolated profile, then re-validates headless.
-npx mcp-ado-browser authenticate --org <your-org>
-
-# 2) Run the MCP stdio server (headless, reusing the persisted session)
-npx mcp-ado-browser --org <your-org>
-```
-
-Config can be passed as **CLI flags** or **env vars** (flags win):
+The command every client runs is the same:
 
 ```bash
-npx mcp-ado-browser --org <org> [--project <project>] [--channel chrome|msedge]
-# equivalently:
-ADO_ORG=<org> npx mcp-ado-browser
+npx -y mcp-ado-browser --org <your-org>          # from npm (once published)
+npx -y github:VMargan/mcp-ado-browser --org <your-org>   # straight from GitHub, no npm account
 ```
 
-Then wire it into your MCP client (below) and ask it things like *“list my active pull
-requests”*, *“show work item 1234 and its linked PR”*, or *“what feeds and packages are
-in this org?”*.
+Config is passed as CLI flags (`--org`, `--project`, …) or env vars (`ADO_ORG`, …);
+flags win. Then ask things like *“list my active pull requests”*, *“show work item 1234
+and its linked PR”*, or *“what feeds and packages are in this org?”*.
 
-### Use it from an MCP client (Claude Desktop, Cursor, …)
+> Tip: prefer per-user/local config (not committed) so your org name doesn't land in a
+> shared repo. Or omit `--org` from a committed config and set `ADO_ORG` in your env.
 
-```jsonc
+## Use it from your MCP client
+
+<details open>
+<summary><b>Claude Code</b></summary>
+
+```bash
+claude mcp add ado --scope local -- npx -y mcp-ado-browser --org <your-org>
+```
+Then ask Claude to *“authenticate to Azure DevOps”*.
+</details>
+
+<details>
+<summary><b>Claude Desktop</b> — <code>claude_desktop_config.json</code></summary>
+
+```json
 {
   "mcpServers": {
-    "azure-devops": {
+    "ado": {
       "command": "npx",
       "args": ["-y", "mcp-ado-browser", "--org", "<your-org>"]
     }
   }
 }
 ```
+</details>
 
-Run `npx mcp-ado-browser authenticate --org <your-org>` once in a terminal first so the
-session is persisted; the server then runs headless and reuses it. Re-run
-`authenticate` whenever the session expires (the tools return a structured
-`AUTH_REQUIRED` error when it does).
+<details>
+<summary><b>GitHub Copilot (VS Code)</b> — <code>.vscode/mcp.json</code></summary>
+
+```json
+{
+  "servers": {
+    "ado": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "mcp-ado-browser", "--org", "<your-org>"]
+    }
+  }
+}
+```
+Open Copilot Chat in **Agent** mode and pick the `ado` tools. (Avoid committing your org —
+use `${env:ADO_ORG}` or a personal config.)
+</details>
+
+<details>
+<summary><b>Cursor</b> — <code>~/.cursor/mcp.json</code> (or <code>.cursor/mcp.json</code>)</summary>
+
+```json
+{
+  "mcpServers": {
+    "ado": {
+      "command": "npx",
+      "args": ["-y", "mcp-ado-browser", "--org", "<your-org>"]
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>Codex CLI</b> — <code>~/.codex/config.toml</code></summary>
+
+```toml
+[mcp_servers.ado]
+command = "npx"
+args = ["-y", "mcp-ado-browser", "--org", "<your-org>"]
+```
+</details>
+
+After registering, trigger sign-in **from the chat** (*“authenticate to Azure DevOps”*),
+which runs the `authenticate` tool. Prefer a terminal instead? `npx -y mcp-ado-browser
+authenticate --org <your-org>` does the same thing. Tools return a structured
+`AUTH_REQUIRED` error when the session expires — re-authenticate and continue.
 
 ## Tools (`tools/list`)
 
@@ -124,6 +175,7 @@ session is persisted; the server then runs headless and reuses it. Re-run
 | `get_pull_request_comments` | Threads, distinguishing **system vs human**. |
 | `search_feeds` | Artifacts feeds → packages → versions. |
 | `download_artifact` | `.nupkg`/`.tgz` from a feed (cross-host `pkgs.dev.azure.com`), with archive-integrity validation. |
+| `authenticate` | Opens a visible browser for interactive sign-in (MFA); persists the session. Run it once, or whenever a tool returns `AUTH_REQUIRED`. |
 
 ## Configuration
 

@@ -188,6 +188,13 @@ export const DownloadedArtifactSchema = z.object({
 });
 export type DownloadedArtifact = z.infer<typeof DownloadedArtifactSchema>;
 
+export const AuthResultSchema = z.object({
+  authenticated: z.boolean(),
+  identity: z.string().nullable(),
+  message: z.string(),
+});
+export type AuthResult = z.infer<typeof AuthResultSchema>;
+
 /** Validate `value` against `schema`, raising a ValidationError on drift. */
 export function validateOutput<T>(schema: z.ZodType<T>, value: unknown, label: string): T {
   const r = schema.safeParse(value);

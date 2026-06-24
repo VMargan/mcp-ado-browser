@@ -8,7 +8,91 @@ import { SqliteCache } from "./cache/sqlite-cache.js";
 import { AdoClient } from "./ado/client.js";
 import { VersionRegistry } from "./ado/versions.js";
 import { CachePort } from "./cache/types.js";
+import { AuthResult } from "./ado/schemas.js";
+import { AuthRequiredError } from "./errors.js";
 import { log } from "./logger.js";
+
+/**
+ * Owns a SINGLE browser profile across the server's lifetime and arbitrates between
+ * the HEADLESS work session (data tools) and the HEADFUL interactive sign-in — so the
+ * profile lock is never held by two Chrome instances at once. This is what lets the
+ * `authenticate` MCP tool open the login window from inside the running server.
+ */
+export class AdoRuntime {
+  private readonly cfg: ResolvedConfig;
+  private readonly versions: VersionRegistry;
+  private cache: SqliteCache | null = null;
+  private session: BrowserSession | null = null;
+  private client: AdoClient | null = null;
+
+  // NOTE: org is validated lazily (getClient/authenticate), NOT in the constructor —
+  // so `initialize`/`tools/list` work over stdio even before any org is configured.
+  constructor(cfg: ResolvedConfig = loadConfig()) {
+    this.cfg = cfg;
+    this.versions = new VersionRegistry(cfg.apiVersionOverride);
+  }
+
+  private newSession(): BrowserSession {
+    requireConnection(this.cfg); // throws CONFIG_ERROR if ADO_ORG is missing
+    return new BrowserSession({ userDataDir: this.cfg.userDataDir, channel: this.cfg.browserChannel, org: this.cfg.org!, versions: this.versions });
+  }
+
+  private getCache(): SqliteCache {
+    if (!this.cache) this.cache = new SqliteCache({ dbPath: this.cfg.cacheDbPath, defaultTtlSeconds: this.cfg.cacheTtlSeconds, ttlOverrides: this.cfg.cacheTtlOverrides });
+    return this.cache;
+  }
+
+  /** Lazily (re)build the HEADLESS work client, reusing the persisted session cookies. */
+  async getClient(): Promise<AdoClient> {
+    if (this.client && this.session) return this.client;
+    this.session = this.newSession();
+    await this.session.ensureLaunched(true);
+    this.client = new AdoClient({ transport: this.session.transport, hosts: this.session.hosts, versions: this.versions, project: this.cfg.project, cache: this.getCache() });
+    return this.client;
+  }
+
+  private async disposeSession(): Promise<void> {
+    if (this.session) await this.session.close();
+    this.session = null;
+    this.client = null;
+  }
+
+  /**
+   * Interactive sign-in usable as an MCP tool. If the session is already valid it
+   * returns immediately (no window). Otherwise it releases the headless session,
+   * opens a VISIBLE window, polls until sign-in (bounded), persists, and closes the
+   * window so the next data call relaunches headless and reuses the cookies.
+   */
+  async authenticate(timeoutMs: number): Promise<AuthResult> {
+    try {
+      await this.getClient();
+      if (await this.session!.validate()) {
+        return { authenticated: true, identity: null, message: "Already signed in — the persisted session is still valid." };
+      }
+    } catch {
+      /* fall through to interactive sign-in */
+    }
+    await this.disposeSession(); // free the profile lock for the headful window
+    const auth = this.newSession();
+    try {
+      const id = await auth.authenticate(timeoutMs);
+      return { authenticated: true, identity: id.displayName, message: `Signed in as ${id.displayName}. Session persisted; tools are ready.` };
+    } catch (e) {
+      if (e instanceof AuthRequiredError) {
+        return { authenticated: false, identity: null, message: "Timed out waiting for sign-in. A browser window was opened — complete the login, then call `authenticate` again." };
+      }
+      throw e;
+    } finally {
+      await auth.close();
+    }
+  }
+
+  async close(): Promise<void> {
+    await this.disposeSession();
+    this.cache?.close();
+    this.cache = null;
+  }
+}
 
 export interface LiveRuntime {
   client: AdoClient;

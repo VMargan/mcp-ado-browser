@@ -13,8 +13,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig } from "./config.js";
 import { createMcpServer } from "./server.js";
-import { buildLiveRuntime, runAuthenticate } from "./runtime.js";
-import { AdoClient } from "./ado/client.js";
+import { AdoRuntime, runAuthenticate } from "./runtime.js";
 import { applyArgs, parseArgs } from "./cli.js";
 import { log } from "./logger.js";
 
@@ -49,18 +48,15 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Default: MCP stdio server. The live client (browser session) is built lazily
-  // on the first tool call so `initialize`/`tools/list` work without a browser.
+  // Default: MCP stdio server. The browser session is built lazily on first use so
+  // `initialize`/`tools/list` work without a browser, and `authenticate` can open a
+  // visible window from inside the running server.
   const cfg = loadConfig();
-  let cached: AdoClient | null = null;
-  const getClient = async (): Promise<AdoClient> => {
-    if (cached) return cached;
-    const rt = await buildLiveRuntime(cfg);
-    cached = rt.client;
-    return cached;
-  };
-
-  const server = createMcpServer({ getClient });
+  const runtime = new AdoRuntime(cfg);
+  const server = createMcpServer({
+    getClient: () => runtime.getClient(),
+    authenticate: (timeoutSeconds) => runtime.authenticate(timeoutSeconds * 1000),
+  });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   log.info("MCP stdio server ready (mcp-ado-browser).");

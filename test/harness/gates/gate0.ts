@@ -13,7 +13,7 @@ import { detectIdentity, pollUntilAuthenticated } from "../../../src/browser/aut
 import { mandatoryHeaders } from "../../../src/transport/types.js";
 import { parseArgs } from "../../../src/cli.js";
 
-/** The canonical tool set exposed by tools/list (9 read tools + 2 org-wide discovery tools). */
+/** The canonical tool set exposed by tools/list (9 read tools + 2 discovery tools + authenticate). */
 export const EXPECTED_TOOLS = [
   "list_projects",
   "list_repositories",
@@ -26,6 +26,7 @@ export const EXPECTED_TOOLS = [
   "get_pull_request_comments",
   "search_feeds",
   "download_artifact",
+  "authenticate",
 ];
 
 export async function gate0(g: GateRun): Promise<void> {
@@ -161,8 +162,23 @@ export async function gate0(g: GateRun): Promise<void> {
       return "detection + polling verified";
     });
 
-    // 0.7 — every tool def declares input + output schema (wiring sanity).
-    g.check(`0.7 all ${EXPECTED_TOOLS.length} tool defs declare input shape + output schema`, TOOL_DEFS.every((t) => t.inputShape && t.outputSchema) && TOOL_DEFS.length === EXPECTED_TOOLS.length, `${TOOL_DEFS.length} defs`);
+    // 0.7 — every data tool def declares input + output schema (wiring sanity).
+    //       TOOL_DEFS are the 11 data tools; `authenticate` is registered separately.
+    g.check(`0.7 all ${TOOL_DEFS.length} data tool defs declare input shape + output schema`, TOOL_DEFS.every((t) => t.inputShape && t.outputSchema) && TOOL_DEFS.length === EXPECTED_TOOLS.length - 1, `${TOOL_DEFS.length} defs + authenticate`);
+
+    // 0.7b — the authenticate tool is exposed and gated when no runtime is provided.
+    await g.assert("0.7b authenticate tool is listed and reports clearly when no runtime is wired", async () => {
+      const mcp = createMcpServer({ getClient: async () => makeClient({ mockBaseUrl: baseUrl }) }); // no `authenticate` dep
+      const client = new Client({ name: "verify", version: "0" });
+      const [a, b] = InMemoryTransport.createLinkedPair();
+      await Promise.all([mcp.connect(a), client.connect(b)]);
+      const res: any = await client.callTool({ name: "authenticate", arguments: {} });
+      assert(res.isError === true, "authenticate without runtime should report an error");
+      const err = JSON.parse(res.content[0].text);
+      assert(err.code === "CONFIG_ERROR", `expected CONFIG_ERROR, got ${err.code}`);
+      await client.close();
+      return "authenticate present + gated";
+    });
 
     // 0.8 — CLI args map onto env (so `npx mcp-ado-browser --org X` works).
     await g.assert("0.8 CLI flags parse into config (--org, --project, subcommand, bool flags)", () => {

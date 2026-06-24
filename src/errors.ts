@@ -33,7 +33,11 @@ export class AdoError extends Error {
 /** Session cookie is dead / expired. The agent must re-run `authenticate`. */
 export class AuthRequiredError extends AdoError {
   constructor(url?: string) {
-    super("AUTH_REQUIRED", "AUTH_REQUIRED: run the `authenticate` tool", url ? { url } : undefined);
+    super(
+      "AUTH_REQUIRED",
+      "AUTH_REQUIRED: not signed in to Azure DevOps. Call the `authenticate` tool (it opens a browser for interactive sign-in), then retry this request.",
+      url ? { url } : undefined,
+    );
     this.name = "AuthRequiredError";
   }
 }

@@ -75,8 +75,7 @@ Setup is **two steps**:
 The command every client runs is the same:
 
 ```bash
-npx -y mcp-ado-browser --org <your-org>          # from npm (once published)
-npx -y github:VMargan/mcp-ado-browser --org <your-org>   # straight from GitHub, no npm account
+npx -y mcp-ado-browser --org <your-org>
 ```
 
 Config is passed as CLI flags (`--org`, `--project`, …) or env vars (`ADO_ORG`, …);

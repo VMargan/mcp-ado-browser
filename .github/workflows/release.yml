@@ -35,7 +35,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: env.HAS_NPM_TOKEN == 'true'
         with:
-          node-version: "22"
+          node-version: "24" # npm >= 11.5.1 / Node >= 22.14 — required to later switch to OIDC trusted publishing
           cache: npm
 
       - name: Install Google Chrome

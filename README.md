@@ -27,20 +27,17 @@ request carries `X-TFS-FedAuthRedirect: Suppress` so a dead session returns a cl
 
 ## How it works
 
-```
-            ┌─ you sign in once (MFA) in a visible, chromeless window ─┐
-            ▼                                                          │
-  ┌───────────────────┐   cookies persisted on an    ┌────────────────────────┐
-  │  authenticate      │──▶ isolated profile on disk ─▶│  headless work session │
-  │  (visible browser) │                              │  (reuses the cookies)  │
-  └───────────────────┘                              └───────────┬────────────┘
-                                                                 │ page.evaluate(fetch)
-   MCP client (Claude / Cursor / …)                              ▼ same-origin, cookies attached
-        │  tools/call  ┌──────────────────────┐         ┌─────────────────────┐
-        └─────────────▶│  mcp-ado-browser     │────────▶│   dev.azure.com …    │ → JSON
-                       │  (stdio MCP server)  │◀────────│   (your real session)│
-                       └──────────┬───────────┘         └─────────────────────┘
-                                  ▼ SQLite cache (TTL + Rev freshness)
+```mermaid
+flowchart TD
+    A["authenticate<br/>(visible, chromeless window)"] -->|"sign in once · MFA"| P[("session cookies<br/>persisted on an isolated profile")]
+    P -. reused .-> W["headless work session"]
+
+    MC["MCP client<br/>(Claude / Cursor / …)"] -->|"tools/call"| SRV["mcp-ado-browser<br/>(stdio MCP server)"]
+    SRV --> W
+    W -->|"page.evaluate(fetch)<br/>same-origin, cookies attached"| ADO["dev.azure.com · feeds · pkgs<br/>(your real session)"]
+    ADO -->|"JSON"| W
+    W --> SRV
+    SRV <-->|"TTL + Rev freshness"| DB[("SQLite cache")]
 ```
 
 1. **Authentication is your browser, not a token.** `authenticate` opens a real,

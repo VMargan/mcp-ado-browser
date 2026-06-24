@@ -13,7 +13,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig } from "./config.js";
 import { createMcpServer } from "./server.js";
-import { AdoRuntime, runAuthenticate } from "./runtime.js";
+import { AdoRuntime, runAuthenticate, runLogout, runStatus } from "./runtime.js";
 import { applyArgs, parseArgs } from "./cli.js";
 import { log } from "./logger.js";
 
@@ -22,6 +22,8 @@ const HELP = `mcp-ado-browser — read-only Azure DevOps for MCP, via your brows
 Usage:
   npx mcp-ado-browser [--org <org>] [--project <project>]      start the MCP stdio server
   npx mcp-ado-browser authenticate --org <org>                 interactive sign-in (visible browser)
+  npx mcp-ado-browser status --org <org>                       show identity + whether the session is valid
+  npx mcp-ado-browser logout                                   clear the persisted session and cache
 
 Options (also settable via env, shown in []):
   --org <org>                 [ADO_ORG]                 organization (required)
@@ -41,6 +43,14 @@ async function main(): Promise<void> {
 
   if (sub === "authenticate" || sub === "auth") {
     process.exitCode = await runAuthenticate();
+    return;
+  }
+  if (sub === "logout") {
+    process.exitCode = await runLogout();
+    return;
+  }
+  if (sub === "status" || sub === "whoami") {
+    process.exitCode = await runStatus();
     return;
   }
   if (sub === "help" || process.argv.includes("--help") || process.argv.includes("-h")) {

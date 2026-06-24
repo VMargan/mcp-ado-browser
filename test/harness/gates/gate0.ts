@@ -1,5 +1,7 @@
 /** Gate 0 — Foundations + one end-to-end tool, validated offline against the mock. */
 import * as path from "node:path";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -12,6 +14,8 @@ import { AuthRequiredError, NotFoundError } from "../../../src/errors.js";
 import { detectIdentity, pollUntilAuthenticated } from "../../../src/browser/auth-detect.js";
 import { mandatoryHeaders } from "../../../src/transport/types.js";
 import { parseArgs } from "../../../src/cli.js";
+import { loadConfig } from "../../../src/config.js";
+import { runLogout } from "../../../src/runtime.js";
 
 /** The canonical tool set exposed by tools/list (9 read tools + 2 discovery tools + authenticate). */
 export const EXPECTED_TOOLS = [
@@ -190,6 +194,21 @@ export async function gate0(g: GateRun): Promise<void> {
       const p2 = parseArgs(["--org=acme"]);
       assert(p2.command === null && p2.env.ADO_ORG === "acme", "no-subcommand form failed");
       return "flags + subcommand parsed";
+    });
+
+    // 0.9 — `logout` clears the persisted session profile + cache (no org needed).
+    await g.assert("0.9 logout clears the persisted session profile and cache", async () => {
+      const base = fs.mkdtempSync(path.join(os.tmpdir(), "ado-logout-"));
+      const profile = path.join(base, "profile");
+      fs.mkdirSync(profile, { recursive: true });
+      fs.writeFileSync(path.join(profile, "Cookies"), "x");
+      const cacheDb = path.join(base, "cache.sqlite");
+      fs.writeFileSync(cacheDb, "db");
+      const cfg = loadConfig({ ADO_USER_DATA_DIR: profile, ADO_CACHE_DB: cacheDb } as NodeJS.ProcessEnv);
+      await runLogout(cfg);
+      assert(!fs.existsSync(profile) && !fs.existsSync(cacheDb), "logout did not clear session/cache");
+      fs.rmSync(base, { recursive: true, force: true });
+      return "session + cache removed";
     });
   } finally {
     await server.stop();

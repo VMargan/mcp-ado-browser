@@ -180,15 +180,19 @@ export class BrowserSession {
     return { data, contentLength: cl != null ? Number(cl) : null, contentType: headers["content-type"] ?? null, headers };
   }
 
-  /** Lightweight check: is the persisted session currently valid? */
-  async validate(): Promise<boolean> {
+  /** Who is the persisted session signed in as? Returns null if not authenticated. */
+  async whoami(): Promise<DetectedIdentity | null> {
     try {
       await this.ensureLaunched(true);
-      const data = await this.requestConnectionData();
-      return !!detectIdentity(data);
+      return detectIdentity(await this.requestConnectionData());
     } catch {
-      return false;
+      return null;
     }
+  }
+
+  /** Lightweight check: is the persisted session currently valid? */
+  async validate(): Promise<boolean> {
+    return (await this.whoami()) !== null;
   }
 
   async close(): Promise<void> {

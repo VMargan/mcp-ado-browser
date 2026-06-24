@@ -176,6 +176,35 @@ authenticate --org <your-org>` does the same thing. Tools return a structured
 | `download_artifact` | `.nupkg`/`.tgz` from a feed (cross-host `pkgs.dev.azure.com`), with archive-integrity validation. |
 | `authenticate` | Opens a visible browser for interactive sign-in (MFA); persists the session. Run it once, or whenever a tool returns `AUTH_REQUIRED`. |
 
+## Commands
+
+The single `npx mcp-ado-browser` binary has a few subcommands:
+
+| Command | What it does |
+|---|---|
+| `npx mcp-ado-browser --org <org>` | Start the MCP stdio server (default). |
+| `… authenticate --org <org>` | Interactive sign-in (visible browser). Same as the `authenticate` tool. |
+| `… status --org <org>` | Show the profile/cache paths, the org, and whether the session is signed in (and as who). |
+| `… logout` | Clear the persisted session **and** the cache (a local sign-out). No org needed. |
+
+> Switching org with the **same** account needs nothing special — just change `--org`; one
+> sign-in covers every org that account can access. A different account → `logout` first,
+> then `authenticate` against the other org.
+
+## Where it stores things
+
+Everything is local to your machine, under a single dedicated folder (mode `700`, never
+committed). Nothing is hosted remotely — the server is a local process spawned by your MCP
+client over stdio.
+
+| What | Path (default) |
+|---|---|
+| Browser session (cookies) | **macOS/Linux:** `~/.mcp-ado-browser/profile/` · **Windows:** `C:\Users\<you>\.mcp-ado-browser\profile\` |
+| SQLite cache | `…/.mcp-ado-browser/cache.sqlite` |
+| Package code (npx cache) | **macOS/Linux:** `~/.npm/_npx/<hash>/…/mcp-ado-browser` · **Windows:** `…\AppData\Local\npm-cache\_npx\<hash>\…` (see `npm config get cache`) |
+
+Reset everything (forces re-login): `logout`, or `rm -rf ~/.mcp-ado-browser`.
+
 ## Configuration
 
 | Flag | Env | Default | Meaning |

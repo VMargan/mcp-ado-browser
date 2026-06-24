@@ -26,20 +26,6 @@ export interface SessionOptions {
   versions?: VersionRegistry;
 }
 
-interface EvalJsonResult {
-  data?: unknown;
-  error?: string;
-  status?: number;
-  headers: Record<string, string>;
-  bodyText?: string;
-}
-interface EvalBufResult {
-  b64?: string;
-  error?: string;
-  status?: number;
-  headers: Record<string, string>;
-}
-
 export class BrowserSession {
   private context?: BrowserContext;
   private page?: Page;
@@ -90,34 +76,6 @@ export class BrowserSession {
     return this.page;
   }
 
-  /**
-   * Navigate the page to the target `origin` so subsequent fetches are same-origin
-   * (cookies attach). We land on the ORG-scoped path `<origin>/<org>` rather than
-   * the bare origin: the bare dev.azure.com root bounces unauthenticated users to
-   * the marketing site, while the org path stays on the ADO origin.
-   */
-  async ensureOrigin(origin: string): Promise<void> {
-    const page = this.currentPage();
-    let cur = "";
-    try {
-      cur = new URL(page.url()).origin;
-    } catch {
-      cur = "";
-    }
-    if (cur === origin) return;
-    // Land on a STABLE same-origin response, not the SPA app shell: the dev.azure.com
-    // app continuously client-side-navigates, which destroys page.evaluate execution
-    // contexts. The connectionData JSON endpoint is a static page on the core origin;
-    // other ADO hosts (feeds/pkgs/...) don't serve the SPA, so the org path is stable.
-    const coreOrigin = new URL(this.hosts.base("core")).origin;
-    const landing = origin === coreOrigin ? this.connectionDataUrl() : `${origin}/${encodeURIComponent(this.opts.org)}`;
-    try {
-      await page.goto(landing, { waitUntil: "domcontentloaded", timeout: 30_000 });
-    } catch (e) {
-      // A 404/error page at the landing is fine — we only need the origin context for cookies.
-      log.debug(`ensureOrigin soft-nav note for ${landing}: ${String(e)}`);
-    }
-  }
 
   /**
    * Interactive login. Opens a VISIBLE window, lets the human complete MFA, and
@@ -207,7 +165,17 @@ export class BrowserSession {
   }
 }
 
-/** AdoTransport over a live BrowserSession via same-origin page.evaluate(fetch). */
+/**
+ * AdoTransport over a live BrowserSession. Every request goes through the browser
+ * CONTEXT's cookie jar (Playwright APIRequestContext): it carries the SAME
+ * authenticated session cookies as the page, works same- AND cross-host, and returns
+ * clean HTTP status codes (401 -> AUTH_REQUIRED, 404 -> NOT_FOUND).
+ *
+ * Why not page.evaluate(fetch)? It proved unreliable in real headless runtimes:
+ * navigating to a JSON endpoint, SPA redirects, and corporate proxies (Chrome's
+ * renderer network stack vs Node's) surface as "TypeError: Failed to fetch". The
+ * cookie jar uses the same session but Node's network path — robust everywhere.
+ */
 export class BrowserTransport implements AdoTransport {
   readonly kind = "browser" as const;
   readonly calledUrls: string[] = [];
@@ -221,97 +189,19 @@ export class BrowserTransport implements AdoTransport {
     this.fetchCount = 0;
   }
 
-  /** Run an in-page evaluate, retrying once if a SPA navigation destroys the context. */
-  private async evalWithRetry<R>(targetUrl: string, fn: (a: any) => any, arg: any): Promise<R> {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        return (await this.session.currentPage().evaluate(fn, arg)) as R;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (attempt === 0 && /Execution context was destroyed|context was destroyed|frame was detached|navigating and changing|Target closed/i.test(msg)) {
-          await new Promise((r) => setTimeout(r, 500));
-          await this.session.ensureOrigin(new URL(targetUrl).origin);
-          continue;
-        }
-        throw e;
-      }
-    }
-    throw new Error("unreachable");
-  }
-
-  /** True when the URL targets the core dev.azure.com origin (page.evaluate path). */
-  private isCoreOrigin(url: string): boolean {
-    return new URL(url).origin === new URL(this.session.hosts.base("core")).origin;
-  }
-
   async fetchJson<T>(url: string, init?: FetchInit): Promise<JsonResult<T>> {
     this.calledUrls.push(url);
     this.fetchCount++;
-    if (!this.isCoreOrigin(url)) {
-      const res = await this.session.contextFetchJson<T>(url, init);
-      this.lastHeaders = res.headers;
-      return res;
-    }
-    await this.session.ensureOrigin(new URL(url).origin);
-    const headers = mandatoryHeaders(init?.headers);
-    const r = await this.evalWithRetry<EvalJsonResult>(
-      url,
-      async ({ url, method, headers, body }) => {
-        const res = await fetch(url, { method: method ?? "GET", headers, body, credentials: "include" });
-        const h: Record<string, string> = {};
-        res.headers.forEach((v, k) => (h[k.toLowerCase()] = v));
-        if (res.status === 401) return { error: "ADO_AUTH_EXPIRED", status: 401, headers: h };
-        if (!res.ok) {
-          const t = await res.text().catch(() => "");
-          return { error: "ADO_HTTP_" + res.status, status: res.status, headers: h, bodyText: t.slice(0, 500) };
-        }
-        const data = await res.json();
-        return { data, headers: h };
-      },
-      { url, method: init?.method, headers, body: init?.body },
-    );
-    this.throwIfError(r, url);
-    this.lastHeaders = r.headers;
-    return { data: r.data as T, headers: r.headers };
+    const res = await this.session.contextFetchJson<T>(url, init);
+    this.lastHeaders = res.headers;
+    return res;
   }
 
   async fetchBuffer(url: string, init?: FetchInit): Promise<BinaryResult> {
     this.calledUrls.push(url);
     this.fetchCount++;
-    if (!this.isCoreOrigin(url)) {
-      const res = await this.session.contextFetchBuffer(url, init);
-      this.lastHeaders = res.headers;
-      return res;
-    }
-    await this.session.ensureOrigin(new URL(url).origin);
-    const headers = mandatoryHeaders({ Accept: "application/octet-stream", ...(init?.headers ?? {}) });
-    const r = await this.evalWithRetry<EvalBufResult>(
-      url,
-      async ({ url, method, headers, body }) => {
-        const res = await fetch(url, { method: method ?? "GET", headers, body, credentials: "include" });
-        const h: Record<string, string> = {};
-        res.headers.forEach((v, k) => (h[k.toLowerCase()] = v));
-        if (res.status === 401) return { error: "ADO_AUTH_EXPIRED", status: 401, headers: h };
-        if (!res.ok) return { error: "ADO_HTTP_" + res.status, status: res.status, headers: h };
-        const buf = new Uint8Array(await res.arrayBuffer());
-        let binary = "";
-        const chunk = 0x8000;
-        for (let i = 0; i < buf.length; i += chunk) binary += String.fromCharCode.apply(null, Array.from(buf.subarray(i, i + chunk)));
-        return { b64: btoa(binary), headers: h };
-      },
-      { url, method: init?.method, headers, body: init?.body },
-    );
-    if (r.error) this.throwIfError(r as EvalJsonResult, url);
-    const data = Buffer.from(r.b64 ?? "", "base64");
-    const cl = r.headers["content-length"];
-    this.lastHeaders = r.headers;
-    return { data, contentLength: cl != null ? Number(cl) : null, contentType: r.headers["content-type"] ?? null, headers: r.headers };
-  }
-
-  private throwIfError(r: EvalJsonResult, url: string): void {
-    if (!r.error) return;
-    if (r.error === "ADO_AUTH_EXPIRED" || r.status === 401 || r.status === 403) throw new AuthRequiredError(url);
-    if (r.status === 404) throw new NotFoundError("resource", url, url);
-    throw new HttpError(r.status ?? 0, url, r.bodyText);
+    const res = await this.session.contextFetchBuffer(url, init);
+    this.lastHeaders = res.headers;
+    return res;
   }
 }

@@ -1,65 +1,64 @@
 name: Release
 
-# Trunk-based: only `main` releases. semantic-release reads the Conventional Commits
-# merged to main, bumps the version, updates CHANGELOG, tags, creates the GitHub
-# Release and publishes to npm. feature/* and bugfix/* branches never release here.
+# Trunk-based CD: only `main` releases. semantic-release reads the Conventional
+# Commits merged to main, bumps the version, updates CHANGELOG, tags, creates the
+# GitHub Release and publishes to npm via OIDC TRUSTED PUBLISHING — no token.
 #
-# No-ops cleanly until the NPM_TOKEN repository secret is set.
+# Prerequisite (one-time, on npmjs.com → package → Settings → Trusted Publisher):
+#   Publisher: GitHub Actions | Org/user: VMargan | Repo: mcp-ado-browser
+#   Workflow filename: release.yml | Allowed action: npm publish
+#
+# IMPORTANT: do NOT set NPM_TOKEN. An empty token disables OIDC; it must be absent.
 on:
   push:
     branches: [main]
-  workflow_dispatch: {} # manual trigger (e.g. to cut the first release once NPM_TOKEN is set)
+  workflow_dispatch: {}
 
 permissions:
-  contents: write # tags, release, changelog commit
+  contents: write # tags, GitHub Release, changelog commit
   issues: write
   pull-requests: write
-  id-token: write # npm provenance
+  id-token: write # OIDC trusted publishing + npm provenance
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
     steps:
-      - name: NPM_TOKEN check
-        if: env.HAS_NPM_TOKEN != 'true'
-        run: echo "::notice::NPM_TOKEN secret not set — skipping release. Add it (repo Settings → Secrets) to enable automated npm publishing."
-
       - uses: actions/checkout@v4
-        if: env.HAS_NPM_TOKEN == 'true'
         with:
           fetch-depth: 0
           persist-credentials: true
 
       - uses: actions/setup-node@v4
-        if: env.HAS_NPM_TOKEN == 'true'
         with:
-          node-version: "24" # npm >= 11.5.1 / Node >= 22.14 — required to later switch to OIDC trusted publishing
+          node-version: "24"
           cache: npm
 
-      - name: Install Google Chrome
-        if: env.HAS_NPM_TOKEN == 'true'
-        uses: browser-actions/setup-chrome@v1
-        with:
-          chrome-version: stable
+      - name: Ensure npm >= 11.5.1 (required for OIDC trusted publishing)
+        run: npm install -g npm@latest
 
       - name: Install dependencies
-        if: env.HAS_NPM_TOKEN == 'true'
         run: npm ci
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
 
+      - name: Install Google Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
       - name: Verify (offline gates) before releasing
-        if: env.HAS_NPM_TOKEN == 'true'
         run: npm run verify
         env:
           ADO_NO_SANDBOX: "1"
 
-      - name: semantic-release
-        if: env.HAS_NPM_TOKEN == 'true'
+      - name: Release (semantic-release → npm via OIDC)
         run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
+          # No NPM_TOKEN on purpose — OIDC trusted publishing handles npm auth.

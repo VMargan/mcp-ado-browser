@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/VMargan/mcp-ado-browser/compare/v1.1.0...v1.1.1) (2026-06-24)
+
+
+### Bug Fixes
+
+* clearer AUTH_REQUIRED message for auto re-auth; drop github npx example from README ([5000d3b](https://github.com/VMargan/mcp-ado-browser/commit/5000d3b9fef0b279cfc48ef1bd6d7b18f6f42fe5))
+
 # [1.1.0](https://github.com/VMargan/mcp-ado-browser/compare/v1.0.0...v1.1.0) (2026-06-24)
 
 

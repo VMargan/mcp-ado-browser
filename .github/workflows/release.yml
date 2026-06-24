@@ -8,6 +8,7 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch: {} # manual trigger (e.g. to cut the first release once NPM_TOKEN is set)
 
 permissions:
   contents: write # tags, release, changelog commit

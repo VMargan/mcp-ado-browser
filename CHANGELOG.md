@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/VMargan/mcp-ado-browser/compare/v1.2.1...v1.3.0) (2026-07-28)
+
+
+### Features
+
+* authenticate via the browser session's own access token ([e174fa0](https://github.com/VMargan/mcp-ado-browser/commit/e174fa0146b5e8db2a84494a15e94849328a54a1))
+
 ## [1.2.1](https://github.com/VMargan/mcp-ado-browser/compare/v1.2.0...v1.2.1) (2026-06-24)
 
 

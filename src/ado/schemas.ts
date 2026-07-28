@@ -145,7 +145,18 @@ export const PackageSchema = z.object({
   protocolType: z.string().nullable(),
   versions: z.array(PackageVersionSchema),
 });
-export const FeedSchema = z.object({ id: z.string(), name: z.string(), url: z.string().nullable() });
+export const FeedSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  url: z.string().nullable(),
+  /**
+   * The project a feed belongs to, or null for an ORG-scoped feed. Azure DevOps
+   * routes the two differently: a project-scoped feed only answers under
+   * `{host}/{project}/_apis/...` and 404s at org level. Surfaced so callers (and
+   * download_artifact) can address the feed correctly without guessing.
+   */
+  project: z.object({ id: z.string(), name: z.string() }).nullable(),
+});
 export const FeedsBrowseSchema = z.object({
   feeds: z.array(FeedSchema),
   /** Present when a specific feedId was browsed for its packages. */

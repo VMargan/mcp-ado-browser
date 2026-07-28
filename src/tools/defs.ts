@@ -138,8 +138,10 @@ export const TOOL_DEFS: ToolDef[] = [
 
   def({
     name: "search_feeds",
-    description: "Browse Azure Artifacts feeds (GET feeds.dev.azure.com/_apis/packaging/feeds). Pass feedId to also list packages + versions.",
-    inputShape: { feedId: z.string().optional().describe("Feed id to browse for packages (optional).") },
+    description:
+      "Browse Azure Artifacts feeds (GET feeds.dev.azure.com/_apis/packaging/feeds). Pass feedId to also list packages + versions. " +
+      "Each feed reports its `project` (null for org-scoped feeds); project-scoped feeds are addressed under their project automatically.",
+    inputShape: { feedId: z.string().optional().describe("Feed id or name to browse for packages (optional).") },
     outputSchema: FeedsBrowseSchema,
     run: (c, a) => c.searchFeeds(a).then((r) => validateOutput(FeedsBrowseSchema, r, "search_feeds")),
   }),
@@ -153,6 +155,10 @@ export const TOOL_DEFS: ToolDef[] = [
       version: z.string().describe("Exact version to download."),
       protocol: z.enum(["nuget", "npm"]).describe("Package protocol."),
       saveDir: z.string().describe("Directory to write the downloaded artifact to."),
+      project: z
+        .string()
+        .optional()
+        .describe("Project scope of the feed (id or name). Resolved automatically from the feed; only set it to override."),
     },
     outputSchema: DownloadedArtifactSchema,
     run: (c, a) => c.downloadArtifact(a).then((r) => validateOutput(DownloadedArtifactSchema, r, "download_artifact")),

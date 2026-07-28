@@ -331,14 +331,46 @@ export class AdoClient {
 
   // ---- 8. search_feeds -----------------------------------------------------
 
-  async searchFeeds(args?: { feedId?: string }): Promise<FeedsBrowse> {
+  /**
+   * List feeds, resolving each one's project scope.
+   *
+   * A feed is either ORG-scoped or PROJECT-scoped, and Azure DevOps routes the two
+   * differently: a project-scoped feed answers only under `{host}/{project}/_apis/...`
+   * and returns 404 at org level. The feeds list already tells us which is which
+   * (`project` is present only for project-scoped feeds), so we never have to guess.
+   */
+  async listFeeds(): Promise<FeedsBrowse["feeds"]> {
     const feedsUrl = withApiVersion(`${this.hosts.base("feeds")}/_apis/packaging/feeds`, this.versions.forArea("packaging-feeds"));
     const { data } = await this.transport.fetchJson<any>(feedsUrl);
-    const feeds = (data?.value ?? []).map((f: any) => ({ id: String(f.id), name: str(f.name) ?? String(f.id), url: str(f.url) }));
+    return (data?.value ?? []).map((f: any) => ({
+      id: String(f.id),
+      name: str(f.name) ?? String(f.id),
+      url: str(f.url),
+      project: f.project?.id ? { id: String(f.project.id), name: str(f.project.name) ?? String(f.project.id) } : null,
+    }));
+  }
+
+  /** Find a feed by id OR name (case-insensitive), so callers can use either. */
+  private findFeed(feeds: FeedsBrowse["feeds"], idOrName: string): FeedsBrowse["feeds"][number] | undefined {
+    const needle = idOrName.toLowerCase();
+    return feeds.find((f) => f.id.toLowerCase() === needle) ?? feeds.find((f) => f.name.toLowerCase() === needle);
+  }
+
+  /** URL path segment addressing a feed's project, or "" for an org-scoped feed. */
+  private feedScope(feed?: { project: { id: string; name: string } | null }): string {
+    return feed?.project ? `/${enc(feed.project.id)}` : "";
+  }
+
+  async searchFeeds(args?: { feedId?: string }): Promise<FeedsBrowse> {
+    const feeds = await this.listFeeds();
     if (!args?.feedId) return { feeds };
 
+    // Resolve the feed so the packages call is addressed at the right scope; an
+    // unknown id/name still goes out as-is so ADO answers with its own 404.
+    const feed = this.findFeed(feeds, args.feedId);
+    const feedKey = feed?.id ?? args.feedId;
     const pkgUrl = withApiVersion(
-      `${this.hosts.base("feeds")}/_apis/packaging/feeds/${enc(args.feedId)}/packages?includeAllVersions=true`,
+      `${this.hosts.base("feeds")}${this.feedScope(feed)}/_apis/packaging/feeds/${enc(feedKey)}/packages?includeAllVersions=true`,
       this.versions.forArea("packaging-feeds"),
     );
     const { data: pkgData } = await this.transport.fetchJson<any>(pkgUrl);
@@ -353,30 +385,60 @@ export class AdoClient {
 
   // ---- 9. download_artifact (Phase 3, cross-host via session) ---------------
 
-  /** Canonical pkgs.dev.azure.com download URL for a package version. */
-  artifactUrl(args: { feedId: string; packageName: string; version: string; protocol: "nuget" | "npm" }): string {
+  /**
+   * Canonical pkgs.dev.azure.com download URL for a package version.
+   *
+   * `project` addresses the feed's scope and MUST match how the feed is defined:
+   * an org-scoped feed is served at `{host}/_packaging/...`, a project-scoped one
+   * only at `{host}/{project}/_packaging/...`. Getting it wrong yields a 404 that
+   * reads like "the feed doesn't exist" — `downloadArtifact` resolves it from the
+   * feeds list so callers never have to know.
+   */
+  artifactUrl(args: { feedId: string; packageName: string; version: string; protocol: "nuget" | "npm"; project?: string | null }): string {
+    const scope = args.project ? `/${enc(args.project)}` : "";
     if (args.protocol === "npm") {
       // npm tarball download (EMPIRICALLY validated against a live feed):
-      //   {org}/_packaging/{feed}/npm/registry/{name}/-/{unscopedName}-{version}.tgz
-      // The '/npm/registry/' segment is required, the route is ORG-scoped (project-
-      // scoped returns "feed doesn't exist"), and the FILENAME uses only the unscoped
-      // name ('@scope/name' -> 'name'). The path keeps the scoped name with a literal '/'.
+      //   {org}[/{project}]/_packaging/{feed}/npm/registry/{name}/-/{unscopedName}-{version}.tgz
+      // The '/npm/registry/' segment is required, and the FILENAME uses only the
+      // unscoped name ('@scope/name' -> 'name'); the path keeps the scoped name
+      // with a literal '/'.
       const n = args.packageName;
       const filename = n.includes("/") ? n.slice(n.lastIndexOf("/") + 1) : n;
-      return `${this.hosts.base("pkgs")}/_packaging/${enc(args.feedId)}/npm/registry/${n}/-/${filename}-${enc(args.version)}.tgz`;
+      return `${this.hosts.base("pkgs")}${scope}/_packaging/${enc(args.feedId)}/npm/registry/${n}/-/${filename}-${enc(args.version)}.tgz`;
     }
-    // nuget content endpoint, ORG-scoped (consistent with the validated npm route;
-    // feeds are org-level). Unvalidated against a live NuGet feed — npm is the path
-    // exercised end-to-end. Falls back to a project segment if one is configured.
-    const scope = this.defaultProject ? `/${enc(this.defaultProject)}` : "";
     return withApiVersion(
       `${this.hosts.base("pkgs")}${scope}/_apis/packaging/feeds/${enc(args.feedId)}/nuget/packages/${enc(args.packageName)}/versions/${enc(args.version)}/content`,
       this.versions.forArea("packaging-pkgs"),
     );
   }
 
-  async downloadArtifact(args: { feedId: string; packageName: string; version: string; protocol: "nuget" | "npm"; saveDir: string }): Promise<import("./schemas.js").DownloadedArtifact> {
-    const url = this.artifactUrl(args);
+  async downloadArtifact(args: {
+    feedId: string;
+    packageName: string;
+    version: string;
+    protocol: "nuget" | "npm";
+    saveDir: string;
+    /** Override the feed's project scope; resolved from the feeds list when omitted. */
+    project?: string;
+  }): Promise<import("./schemas.js").DownloadedArtifact> {
+    // Resolve the feed's own scope (and its id, so a NAME works too). An explicit
+    // `project` wins; falling back to the configured default only if nothing else
+    // is known, since a wrong scope surfaces as a misleading "feed not found".
+    let feedKey = args.feedId;
+    let project: string | null = args.project ?? null;
+    if (!project) {
+      try {
+        const feed = this.findFeed(await this.listFeeds(), args.feedId);
+        if (feed) {
+          feedKey = feed.id;
+          project = feed.project?.id ?? null;
+        }
+      } catch (e) {
+        // Feed listing is a convenience here — never let it mask the real download.
+        project = this.defaultProject ?? null;
+      }
+    }
+    const url = this.artifactUrl({ ...args, feedId: feedKey, project });
     const bin = await this.transport.fetchBuffer(url);
     const sha256 = crypto.createHash("sha256").update(bin.data).digest("hex");
     const { validateArchive } = await import("./archive.js");

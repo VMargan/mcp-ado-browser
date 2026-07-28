@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/VMargan/mcp-ado-browser/compare/v1.3.0...v1.3.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* address project-scoped Artifacts feeds at their project scope ([452dee5](https://github.com/VMargan/mcp-ado-browser/commit/452dee575b9219580f1524c5c144f9ecc55e2624))
+
 # [1.3.0](https://github.com/VMargan/mcp-ado-browser/compare/v1.2.1...v1.3.0) (2026-07-28)
 
 

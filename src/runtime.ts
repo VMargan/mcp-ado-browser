@@ -34,7 +34,13 @@ export class AdoRuntime {
 
   private newSession(): BrowserSession {
     requireConnection(this.cfg); // throws CONFIG_ERROR if ADO_ORG is missing
-    return new BrowserSession({ userDataDir: this.cfg.userDataDir, channel: this.cfg.browserChannel, org: this.cfg.org!, versions: this.versions });
+    return new BrowserSession({
+      userDataDir: this.cfg.userDataDir,
+      channel: this.cfg.browserChannel,
+      org: this.cfg.org!,
+      versions: this.versions,
+      sessionStatePath: this.cfg.sessionStatePath,
+    });
   }
 
   private getCache(): SqliteCache {
@@ -79,10 +85,19 @@ export class AdoRuntime {
       return { authenticated: true, identity: id.displayName, message: `Signed in as ${id.displayName}. Session persisted; tools are ready.` };
     } catch (e) {
       if (e instanceof AuthRequiredError) {
-        return { authenticated: false, identity: null, message: "Timed out waiting for sign-in. A browser window was opened — complete the login, then call `authenticate` again." };
+        return {
+          authenticated: false,
+          identity: null,
+          message:
+            "Timed out waiting for sign-in. A browser window was opened — complete the login, then call `authenticate` again." +
+            (e.details ? ` (last probe: ${JSON.stringify(e.details)})` : ""),
+        };
       }
       throw e;
     } finally {
+      // Closing drops the SESSION cookie that keeps the app shell loaded — but
+      // `authenticate` snapshotted storageState first, and the next launch
+      // re-injects it. Always close so the profile lock is released.
       await auth.close();
     }
   }
@@ -105,7 +120,7 @@ export interface LiveRuntime {
 export async function buildLiveRuntime(cfg: ResolvedConfig = loadConfig(), opts?: { headless?: boolean }): Promise<LiveRuntime> {
   requireConnection(cfg);
   const versions = new VersionRegistry(cfg.apiVersionOverride);
-  const session = new BrowserSession({ userDataDir: cfg.userDataDir, channel: cfg.browserChannel, org: cfg.org, versions });
+  const session = new BrowserSession({ userDataDir: cfg.userDataDir, channel: cfg.browserChannel, org: cfg.org, versions, sessionStatePath: cfg.sessionStatePath });
   await session.ensureLaunched(opts?.headless ?? cfg.headless);
   const cache = new SqliteCache({ dbPath: cfg.cacheDbPath, defaultTtlSeconds: cfg.cacheTtlSeconds, ttlOverrides: cfg.cacheTtlOverrides });
   const client = new AdoClient({ transport: session.transport, hosts: session.hosts, versions, project: cfg.project, cache });
@@ -116,7 +131,7 @@ export async function buildLiveRuntime(cfg: ResolvedConfig = loadConfig(), opts?
 export async function runLogout(cfg: ResolvedConfig = loadConfig()): Promise<number> {
   const fs = await import("node:fs");
   let cleared = 0;
-  for (const target of [cfg.userDataDir, cfg.cacheDbPath]) {
+  for (const target of [cfg.userDataDir, cfg.cacheDbPath, cfg.sessionStatePath]) {
     if (fs.existsSync(target)) {
       fs.rmSync(target, { recursive: true, force: true });
       cleared++;
@@ -136,7 +151,7 @@ export async function runStatus(cfg: ResolvedConfig = loadConfig()): Promise<num
     return 0;
   }
   log.info(`Org         : ${cfg.org}${cfg.project ? `   Project: ${cfg.project}` : ""}`);
-  const session = new BrowserSession({ userDataDir: cfg.userDataDir, channel: cfg.browserChannel, org: cfg.org, versions: new VersionRegistry(cfg.apiVersionOverride) });
+  const session = new BrowserSession({ userDataDir: cfg.userDataDir, channel: cfg.browserChannel, org: cfg.org, versions: new VersionRegistry(cfg.apiVersionOverride), sessionStatePath: cfg.sessionStatePath });
   try {
     const id = await session.whoami();
     log.info(id ? `Signed in   : yes — ${id.displayName}` : "Signed in   : no — run `authenticate` to sign in");
@@ -149,7 +164,7 @@ export async function runStatus(cfg: ResolvedConfig = loadConfig()): Promise<num
 /** Interactive (re)authentication: opens a VISIBLE browser, waits for sign-in, persists session. */
 export async function runAuthenticate(cfg: ResolvedConfig = loadConfig()): Promise<number> {
   requireConnection(cfg);
-  const session = new BrowserSession({ userDataDir: cfg.userDataDir, channel: cfg.browserChannel, org: cfg.org, versions: new VersionRegistry(cfg.apiVersionOverride) });
+  const session = new BrowserSession({ userDataDir: cfg.userDataDir, channel: cfg.browserChannel, org: cfg.org, versions: new VersionRegistry(cfg.apiVersionOverride), sessionStatePath: cfg.sessionStatePath });
   const timeoutMs = (Number(process.env.ADO_AUTH_TIMEOUT_SECONDS) || 600) * 1000;
   try {
     const id = await session.authenticate(timeoutMs);

@@ -29,6 +29,12 @@ export interface ResolvedConfig {
   cacheTtlOverrides: Record<string, number>;
   apiVersionOverride: string | null;
   cacheDbPath: string;
+  /**
+   * Snapshot of the browser storageState. Needed because the cookie that keeps the
+   * Azure DevOps app shell loaded is a SESSION cookie: Chrome drops it on exit, so
+   * the persistent profile alone cannot keep the user signed in.
+   */
+  sessionStatePath: string;
   fixturesDir: string;
   /** Real ids used by the live smoke / acceptance pass. */
   test: {
@@ -77,6 +83,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ResolvedConfig
     cacheTtlOverrides: overrides,
     apiVersionOverride: str(env.ADO_API_VERSION),
     cacheDbPath: env.ADO_CACHE_DB && env.ADO_CACHE_DB.trim() !== "" ? env.ADO_CACHE_DB : path.join(dataRoot, "cache.sqlite"),
+    sessionStatePath:
+      env.ADO_SESSION_STATE && env.ADO_SESSION_STATE.trim() !== "" ? env.ADO_SESSION_STATE : path.join(dataRoot, "session-state.json"),
     fixturesDir: env.ADO_FIXTURES_DIR && env.ADO_FIXTURES_DIR.trim() !== "" ? env.ADO_FIXTURES_DIR : path.join(process.cwd(), "fixtures"),
     test: {
       workItemId: num(env.ADO_TEST_WORKITEM_ID),

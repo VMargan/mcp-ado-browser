@@ -30,15 +30,50 @@ export class AdoError extends Error {
   }
 }
 
-/** Session cookie is dead / expired. The agent must re-run `authenticate`. */
+/** Session is dead / expired. The agent must re-run `authenticate`. */
 export class AuthRequiredError extends AdoError {
-  constructor(url?: string) {
+  constructor(url?: string, extra?: Record<string, unknown>) {
     super(
       "AUTH_REQUIRED",
       "AUTH_REQUIRED: not signed in to Azure DevOps. Call the `authenticate` tool (it opens a browser for interactive sign-in), then retry this request.",
-      url ? { url } : undefined,
+      url || extra ? { ...(url ? { url } : {}), ...(extra ?? {}) } : undefined,
     );
     this.name = "AuthRequiredError";
+  }
+}
+
+/**
+ * The isolated browser profile is locked by another Chrome instance — almost
+ * always a still-open interactive sign-in window. Raised instead of Playwright's
+ * raw "Failed to create .../SingletonLock: File exists" stack.
+ */
+export class ProfileLockedError extends AdoError {
+  constructor(userDataDir: string, cause?: string) {
+    super(
+      "CONFIG_ERROR",
+      "PROFILE_LOCKED: the browser profile is already in use — an authentication window is probably still open. " +
+        "Close it (or finish the sign-in) and retry.",
+      { userDataDir, ...(cause ? { cause: cause.slice(0, 300) } : {}) },
+    );
+    this.name = "ProfileLockedError";
+  }
+}
+
+/**
+ * Authenticated, but not allowed on this resource (HTTP 403). Deliberately NOT an
+ * AuthRequiredError: re-running `authenticate` cannot fix a permission problem, and
+ * conflating the two turns a clear "you may not read this feed" into a misleading
+ * "not signed in".
+ */
+export class ForbiddenError extends AdoError {
+  readonly status = 403;
+  constructor(url: string, body?: string) {
+    super("HTTP_ERROR", `FORBIDDEN (403): the signed-in account is not allowed to access ${url}. This is a permission issue, not a sign-in issue.`, {
+      status: 403,
+      url,
+      ...(body ? { body: body.slice(0, 500) } : {}),
+    });
+    this.name = "ForbiddenError";
   }
 }
 
@@ -98,7 +133,8 @@ export function rehydrateSentinel(err: unknown, fallbackUrl?: string): AdoError 
     const status = Number(m[1]);
     const url = m[2] || fallbackUrl || "";
     if (status === 404) return new NotFoundError("resource", url, url);
-    if (status === 401 || status === 403) return new AuthRequiredError(url);
+    if (status === 401) return new AuthRequiredError(url);
+    if (status === 403) return new ForbiddenError(url);
     return new HttpError(status, url);
   }
   if (err instanceof AdoError) return err;

@@ -4,17 +4,18 @@
 
 An **MCP (stdio) server** that gives **read-only access to Azure DevOps using only your
 existing browser session** — **no PAT, no Azure CLI, no official ADO MCP**, no
-credential provider. The only source of authentication is the cookie session of a real
+credential provider. The only source of authentication is the session of a real
 browser, driven by Playwright on an **isolated, dedicated profile**.
 
 It is **org-wide by default**: only the organization is required, and it browses **every
 project, repo and feed you can access**.
 
-Data is fetched via `page.evaluate(() => fetch(...))` executed **inside the
-`dev.azure.com` page context** (same-origin), so session cookies attach automatically
-and you get **JSON** back — never DOM scraping for data the REST API provides. Every
-request carries `X-TFS-FedAuthRedirect: Suppress` so a dead session returns a clean
-`401` instead of an HTML login page.
+Requests reuse **whatever credential your signed-in browser session already carries**.
+Where Azure DevOps authenticates the web app with a bearer token rather than cookies,
+the server loads the app shell once, observes the `Authorization: Bearer` header on
+the app's own API traffic, and replays that token for every host (`dev.azure.com`,
+`feeds`, `pkgs`, `almsearch`). You get **JSON** back — never DOM scraping for data the
+REST API provides. No PAT is ever created, and no token is written to disk.
 
 ## Why these choices (restricted-environment friendly)
 
@@ -29,34 +30,50 @@ request carries `X-TFS-FedAuthRedirect: Suppress` so a dead session returns a cl
 
 ```mermaid
 flowchart TD
-    A["authenticate<br/>(visible, chromeless window)"] -->|"sign in once · MFA"| P[("session cookies<br/>persisted on an isolated profile")]
-    P -. reused .-> W["headless work session"]
+    A["authenticate<br/>(visible, chromeless window)"] -->|"sign in once · MFA"| P[("browser session<br/>persisted on an isolated profile")]
+    P -. restored .-> W["headless work session"]
+    W -->|"loads the app shell once"| T{{"session access token<br/>(observed, in memory only)"}}
 
     MC["MCP client<br/>(Claude / Cursor / …)"] -->|"tools/call"| SRV["mcp-ado-browser<br/>(stdio MCP server)"]
     SRV --> W
-    W -->|"page.evaluate(fetch)<br/>same-origin, cookies attached"| ADO["dev.azure.com · feeds · pkgs<br/>(your real session)"]
+    T --> ADO["dev.azure.com · feeds · pkgs · almsearch<br/>(your real session)"]
     ADO -->|"JSON"| W
     W --> SRV
     SRV <-->|"TTL + Rev freshness"| DB[("SQLite cache")]
 ```
 
-1. **Authentication is your browser, not a token.** `authenticate` opens a real,
+1. **Authentication is your browser, not a PAT.** `authenticate` opens a real,
    visible browser window on a **dedicated, isolated profile** (never your daily
    browser). You sign in normally (MFA included). The tool detects success by polling
-   an authenticated endpoint, then persists the session cookies on disk. No PAT or
-   token is ever created or stored.
+   an authenticated endpoint, then snapshots the browser session to disk. No PAT is
+   ever created.
 2. **Work runs headless.** Subsequent runs launch the same profile **headless** and
-   reuse the persisted cookies — no window, no re-login until the session expires.
-3. **Data comes back as JSON, not scraped HTML.** Each tool runs
-   `fetch(...)` **inside the `dev.azure.com` page context** (same-origin), so the
-   session cookies attach automatically. Every request sends
-   `X-TFS-FedAuthRedirect: Suppress`, so an expired session returns a clean `401`
-   (surfaced as a structured `AUTH_REQUIRED` error) instead of an HTML login page.
-   Cross-host services (feeds / packages) use the same browser cookie jar.
-4. **Responses are cached** in a local SQLite DB (`node:sqlite`) with a configurable
+   restore that snapshot — no window, no re-login until the session expires.
+   The snapshot is needed because the cookie that keeps the Azure DevOps app shell
+   loaded is a **session cookie**, which Chrome drops when it exits.
+3. **Requests reuse the web app's own credential.** On the tenants this was tested
+   against, the Azure DevOps web app authenticates its API with
+   `Authorization: Bearer` (MSAL) and a cookie-only request gets `401` on every
+   host — the sign-in URL even carries `protocol=cookieless`. (This is *observed*
+   behaviour; we found no Microsoft announcement of such a change, so treat it as
+   something that varies rather than a rule.) The server therefore loads the app
+   shell once, observes the token on the app's own API calls, and replays it. One
+   token covers `dev.azure.com`, `feeds`, `pkgs` and `almsearch` alike.
+
+   The token is held **in memory only** and refreshed automatically on a `401`. It
+   is deliberately never written to disk: a bearer token reachable from JS is more
+   exposed than an `httpOnly` cookie — [Microsoft's own MSAL guidance](https://github.com/AzureAD/microsoft-authentication-library-for-js/blob/dev/lib/msal-browser/docs/caching.md)
+   states browser storage is only safe absent XSS, and that its cache encryption
+   "reduce[s] the persistence of auth artifacts, not to provide additional
+   security". This server does not widen that exposure.
+4. **`401` and `403` are kept distinct.** `401` means the session is dead →
+   `AUTH_REQUIRED`, re-run `authenticate`. `403` means you are signed in but lack
+   permission on that resource (a private feed, say) → a `403` error saying so.
+   Re-authenticating cannot fix a permission problem.
+5. **Responses are cached** in a local SQLite DB (`node:sqlite`) with a configurable
    TTL. On a stale hit, a cheap freshness check (`System.Rev` for work items) avoids
    re-downloading unchanged data.
-5. **When the session dies**, tools fail fast with `AUTH_REQUIRED` — just re-run
+6. **When the session dies**, tools fail fast with `AUTH_REQUIRED` — just re-run
    `authenticate` and continue.
 
 ## Getting started
@@ -199,7 +216,8 @@ client over stdio.
 
 | What | Path (default) |
 |---|---|
-| Browser session (cookies) | **macOS/Linux:** `~/.mcp-ado-browser/profile/` · **Windows:** `C:\Users\<you>\.mcp-ado-browser\profile\` |
+| Browser session (profile) | **macOS/Linux:** `~/.mcp-ado-browser/profile/` · **Windows:** `C:\Users\<you>\.mcp-ado-browser\profile\` |
+| Session snapshot (mode `600`) | `…/.mcp-ado-browser/session-state.json` — the session cookies Chrome will not keep on its own. Treat it like a credential; `logout` deletes it. |
 | SQLite cache | `…/.mcp-ado-browser/cache.sqlite` |
 | Package code (npx cache) | **macOS/Linux:** `~/.npm/_npx/<hash>/…/mcp-ado-browser` · **Windows:** `…\AppData\Local\npm-cache\_npx\<hash>\…` (see `npm config get cache`) |
 
@@ -212,6 +230,7 @@ Reset everything (forces re-login): `logout`, or `rm -rf ~/.mcp-ado-browser`.
 | `--org` | `ADO_ORG` | — | Organization (**required**). |
 | `--project` | `ADO_PROJECT` | — | Default project scope (optional; org-wide otherwise). |
 | `--user-data-dir` | `ADO_USER_DATA_DIR` | `~/.mcp-ado-browser/profile` | Isolated persistent browser profile. |
+| — | `ADO_SESSION_STATE` | `~/.mcp-ado-browser/session-state.json` | Session snapshot (mode `600`) that keeps you signed in across browser restarts. |
 | `--channel` | `ADO_BROWSER_CHANNEL` | `chrome` | `chrome` or `msedge`. |
 | `--cache-ttl` | `ADO_CACHE_TTL_SECONDS` | `900` | Global cache TTL. Per-resource: `ADO_CACHE_TTL_WORKITEM=60`. |
 | `--api-version` | `ADO_API_VERSION` | discovery/defaults | Force an api-version for all areas. |
